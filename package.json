@@ -20,6 +20,7 @@
     "@solana/web3.js": "^1.98.4",
     "@tanstack/react-query": "^5.83.0",
     "ai": "^4.3.19",
+    "randomness-js": "^1.0.0",
     "blocklock-js": "^1.0.0",
     "bs58": "^6.0.0",
     "ethers": "^6.15.0",
