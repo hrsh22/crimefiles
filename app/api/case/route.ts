@@ -5,6 +5,8 @@ import { openai } from "@ai-sdk/openai";
 import { getVercelAITools } from "@coinbase/agentkit-vercel-ai-sdk";
 import { prepareAgentkitAndWalletProvider } from "@/lib/prepare-agentkit";
 import { buildCaseGenerationSystemPrompt } from "@/lib/prompts";
+import lighthouse from "@lighthouse-web3/sdk";
+import { GeneratedCaseSeed } from "@/lib/case-seeds";
 
 export const runtime = "nodejs";
 
@@ -15,7 +17,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing seed" }, { status: 400 });
         }
 
-        const system = buildCaseGenerationSystemPrompt({ seed: seed as any });
+        const system = buildCaseGenerationSystemPrompt({ seed: seed as GeneratedCaseSeed });
         const model = openai("gpt-4.1-mini");
         const { agentkit } = await prepareAgentkitAndWalletProvider();
         const tools = getVercelAITools(agentkit);
@@ -38,18 +40,30 @@ export async function POST(req: Request) {
         const jsonStart = text.indexOf("{");
         const jsonEnd = text.lastIndexOf("}");
         const raw = jsonStart >= 0 && jsonEnd >= 0 ? text.slice(jsonStart, jsonEnd + 1) : text;
-        let parsed: unknown;
+        let parsed: Record<string, unknown>;
         try {
             parsed = JSON.parse(raw);
         } catch {
             return NextResponse.json({ error: "Model did not return valid JSON" }, { status: 500 });
         }
 
-        return NextResponse.json({ case: parsed });
+        // Persist JSON to Lighthouse; use CID as case id
+        const apiKey = process.env.LIGHTHOUSE_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json({ error: "Missing LIGHTHOUSE_API_KEY" }, { status: 500 });
+        }
+        const name = `case`;
+        const uploadRes = await lighthouse.uploadText(JSON.stringify(parsed), apiKey, name);
+        const cid = uploadRes?.data?.Hash as string | undefined;
+        if (!cid) {
+            return NextResponse.json({ error: "Failed to upload to Lighthouse" }, { status: 500 });
+        }
+        (parsed as { id: string }).id = cid;
+
+        // Return only essentials with cid
+        return NextResponse.json({ case: { id: cid, cid, title: parsed.title as string, excerpt: parsed.excerpt as string } });
     } catch (error) {
         console.error("Error generating case:", error);
         return NextResponse.json({ error: "Failed to generate case" }, { status: 500 });
     }
 }
-
-

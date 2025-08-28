@@ -181,7 +181,9 @@ export default function CaseFilesIndexPage() {
                                                 const data = await res.json();
                                                 if (!res.ok || !data.case) throw new Error(data.error || "Failed");
                                                 setLatestGeneratedCase(data.case);
-                                                router.push("/case-files/generated");
+                                                setIsModalOpen(false);
+                                                setGenerated(null);
+                                                router.push(`/case-files/${data.case.id}`);
                                             } catch (e) {
                                                 console.error(e);
                                             } finally {

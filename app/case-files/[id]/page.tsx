@@ -1,46 +1,56 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { getCaseById } from "../cases";
 import type { CaseFile } from "../cases";
 import Wallet from "@/app/wallet";
 import { useAccount } from 'wagmi';
-import { getLatestGeneratedCase } from "@/lib/generated-store";
+// import { getLatestGeneratedCase } from "@/lib/generated-store";
 // import { CONTRACT_ABI, CONTRACT_ADDRESS } from '@/lib/contract';
 // import { ethers, getBytes } from "ethers";
 // import { Blocklock, encodeCiphertextToSolidity, encodeCondition } from "blocklock-js";
 
 export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = React.use(params as Promise<{ id: string }>);
+    const [cidCase, setCidCase] = useState<CaseFile | undefined>(undefined);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
     const caseFile = useMemo(() => {
-        if (id === "generated") {
-            const data = getLatestGeneratedCase() as unknown as Partial<CaseFile> | null;
-            if (!data) return undefined;
+        return getCaseById(id) ?? cidCase;
+    }, [id, cidCase]);
 
-            const normalizedSuspects = (Array.isArray(data.suspects) ? data.suspects : []).map((s: Partial<CaseFile["suspects"][number]>, i: number) => ({
-                id: s?.id ?? `s${i + 1}`,
-                name: s?.name ?? `Suspect ${i + 1}`,
-                description: s?.description ?? undefined,
-                age: s?.age ?? 22 + i,
-                occupation: s?.occupation ?? "Unknown",
-                image: s?.image ?? `/assets/suspects/${((i % 3) + 1)}.png`,
-                gender: s?.gender ?? "M",
-                traits: s?.traits ?? [],
-                mannerisms: s?.mannerisms ?? [],
-            }));
-
-            const normalized: CaseFile = {
-                id: (data as Partial<CaseFile>)?.id ?? "generated",
-                title: (data as Partial<CaseFile>)?.title ?? "Generated Case",
-                excerpt: (data as Partial<CaseFile>)?.excerpt ?? "",
-                story: (data as Partial<CaseFile>)?.story ?? "",
-                hints: Array.isArray((data as Partial<CaseFile>)?.hints) ? ((data as Partial<CaseFile>)?.hints as string[]) : [],
-                suspects: normalizedSuspects,
-            };
-            return normalized;
-        }
-        return getCaseById(id);
+    useEffect(() => {
+        (async () => {
+            setIsLoading(true);
+            try {
+                const url = `https://gateway.lighthouse.storage/ipfs/${id}`;
+                const res = await fetch(url);
+                const json = await res.json();
+                if (json && typeof json === "object") {
+                    const normalizedSuspects = (Array.isArray(json.suspects) ? json.suspects : []).map((s: Partial<CaseFile["suspects"][number]>, i: number) => ({
+                        id: s?.id ?? `s${i + 1}`,
+                        name: s?.name ?? `Suspect ${i + 1}`,
+                        description: s?.description ?? undefined,
+                        age: s?.age ?? 22 + i,
+                        occupation: s?.occupation ?? "Unknown",
+                        image: s?.image ?? `/assets/suspects/${((i % 3) + 1)}.png`,
+                        gender: s?.gender ?? "M",
+                        traits: s?.traits ?? [],
+                        mannerisms: s?.mannerisms ?? [],
+                    }));
+                    const normalized: CaseFile = {
+                        id: (json as Partial<CaseFile>)?.id ?? id,
+                        title: (json as Partial<CaseFile>)?.title ?? "Generated Case",
+                        excerpt: (json as Partial<CaseFile>)?.excerpt ?? "",
+                        story: (json as Partial<CaseFile>)?.story ?? "",
+                        hints: Array.isArray((json as Partial<CaseFile>)?.hints) ? ((json as Partial<CaseFile>)?.hints as string[]) : [],
+                        suspects: normalizedSuspects,
+                    };
+                    setCidCase(normalized);
+                }
+            } catch { }
+            finally { setIsLoading(false); }
+        })();
     }, [id]);
     const [selectedSuspectId, setSelectedSuspectId] = useState<string>("");
     const { isConnected } = useAccount();
@@ -134,7 +144,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     caseId: id,
                     suspectId: selectedSuspectId,
                     messages: apiMessages,
-                    ...(id === "generated" ? { case: caseFile } : {})
+                    case: caseFile
                 })
             });
 
@@ -234,12 +244,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
     console.log(id);
 
+    if (isLoading) {
+        return (
+            <div className="min-h-screen grid place-items-center bg-gradient-to-b from-[#0b0c10] via-[#121418] to-[#0b0c10] text-zinc-100">
+                <div className="max-w-xl w-full px-6 py-10 bg-[#121417] border border-zinc-700/60">
+                    <h1 className="text-2xl font-funnel-display">Loading case…</h1>
+                </div>
+            </div>
+        );
+    }
+
     if (!caseFile) {
         return (
             <div className="min-h-screen grid place-items-center bg-gradient-to-b from-[#0b0c10] via-[#121418] to-[#0b0c10] text-zinc-100">
                 <div className="max-w-xl w-full px-6 py-10 bg-[#121417] border border-zinc-700/60">
-                    <h1 className="text-2xl font-funnel-display">{id === "generated" ? "No generated case" : "Case not found"}</h1>
-                    <p className="text-zinc-400 mt-2">{id === "generated" ? "Generate a case from the case files page." : "The case you&apos;re looking for doesn&apos;t exist."}</p>
+                    <h1 className="text-2xl font-funnel-display">Case not found</h1>
+                    <p className="text-zinc-400 mt-2">The case you&apos;re looking for doesn&apos;t exist or couldn&apos;t be fetched.</p>
                     <div className="mt-6">
                         <Link href="/case-files" className="inline-block border border-amber-400/60 text-amber-300 px-4 py-2">
                             ← Back to all cases

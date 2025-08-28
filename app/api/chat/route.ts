@@ -8,7 +8,7 @@ import { buildSuspectSystemPrompt } from "@/lib/prompts";
 import type { AgentResponse, ChatMessage } from "@/types/api";
 import { getCaseById } from "@/app/case-files/cases";
 import type { CaseFile, Suspect } from "@/app/case-files/cases";
-import { getLatestGeneratedCase } from "@/lib/generated-store";
+// import { getLatestGeneratedCase } from "@/lib/generated-store";
 
 
 export const runtime = "nodejs";
@@ -30,30 +30,27 @@ export async function POST(req: Request): Promise<NextResponse<AgentResponse>> {
         }
 
         let caseFile: CaseFile | undefined;
-        if (caseId === "generated") {
-            // Prefer provided case payload from client (store is not shared client↔server)
-            const raw = (providedCase as Partial<CaseFile> | undefined) ?? (getLatestGeneratedCase() as Partial<CaseFile> | null ?? undefined);
-            if (raw) {
-                const suspects: Suspect[] = (Array.isArray(raw.suspects) ? raw.suspects : []).map((s, i) => ({
-                    id: s?.id ?? `s${i + 1}`,
-                    name: s?.name ?? `Suspect ${i + 1}`,
-                    description: s?.description,
-                    age: s?.age ?? 22 + i,
-                    occupation: s?.occupation ?? "Unknown",
-                    image: s?.image ?? `/assets/suspects/${((i % 3) + 1)}.png`,
-                    gender: s?.gender ?? "M",
-                    traits: s?.traits ?? [],
-                    mannerisms: s?.mannerisms ?? [],
-                }));
-                caseFile = {
-                    id: raw.id ?? "generated",
-                    title: raw.title ?? "Generated Case",
-                    excerpt: raw.excerpt ?? "",
-                    story: raw.story ?? "",
-                    hints: Array.isArray(raw.hints) ? raw.hints : [],
-                    suspects,
-                };
-            }
+        if (providedCase) {
+            const raw = providedCase as Partial<CaseFile>;
+            const suspects: Suspect[] = (Array.isArray(raw.suspects) ? raw.suspects : []).map((s, i) => ({
+                id: s?.id ?? `s${i + 1}`,
+                name: s?.name ?? `Suspect ${i + 1}`,
+                description: s?.description,
+                age: s?.age ?? 22 + i,
+                occupation: s?.occupation ?? "Unknown",
+                image: s?.image ?? `/assets/suspects/${((i % 3) + 1)}.png`,
+                gender: s?.gender ?? "M",
+                traits: s?.traits ?? [],
+                mannerisms: s?.mannerisms ?? [],
+            }));
+            caseFile = {
+                id: raw.id ?? (caseId || "case"),
+                title: raw.title ?? "Generated Case",
+                excerpt: raw.excerpt ?? "",
+                story: raw.story ?? "",
+                hints: Array.isArray(raw.hints) ? raw.hints : [],
+                suspects,
+            };
         } else {
             caseFile = getCaseById(caseId);
         }
