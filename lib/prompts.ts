@@ -82,6 +82,7 @@ Type shape:
   "story": string,
   "hints": string[],
   "guiltySuspectId": string,
+  "crimestory": string,
   "suspects": Array<{
     "id": string,
     "name": string,
@@ -105,6 +106,7 @@ Requirements:
 - Output ONLY the JSON. No commentary.
  - For each suspect, "name" must be a realistic full human name (e.g., "Evelyn Hart"). Do NOT use roles or titles (e.g., not "The Curator"). Ensure "name" differs from "occupation".
  - Include a top-level field "guiltySuspectId" that is exactly equal to one suspect's "id". Do not state guilt in title, excerpt, story, or hints; keep it hidden in this field only.
+ - Include a top-level field "crimestory" with a concise, evidence-based narrative (80–150 words) explaining why the suspect with id==guiltySuspectId is guilty. This should reference concrete clues (e.g., access anomalies, timestamps) without contradicting the public story/hints. Do not reveal this in other fields.
 
 Seed to use (context): ${JSON.stringify(seedSummary)}
 `;
