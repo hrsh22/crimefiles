@@ -28,36 +28,43 @@ export default function CaseFilesIndexPage() {
 
     else {
         return (
-            <div className="w-full min-h-screen text-white bg-files-pattern bg-cover bg-center">
+            <div className="w-full h-[calc(100vh-4rem)] text-white relative overflow-hidden bg-gradient-to-b from-[#0b0c10] via-[#0f1218] to-[#0b0c10]">
 
-                <div className="absolute top-0 left-0 text-2xl font-funnel-display text-white p-4 z-30">CRIME FILES</div>
+                <div className="max-w-7xl mx-auto h-full px-4 py-8 flex flex-col">
+                    <div className="flex items-end justify-between">
+                        <h1 className="text-3xl md:text-4xl font-funnel-display">Open Case Files</h1>
+                        <p className="text-white/70 font-funnel-display">{cases.length} active investigations</p>
+                    </div>
 
-                {blockClicks && <div className="fixed inset-0 z-40" />}
-                <div className="relative z-20 max-w-7xl mx-auto px-4 py-12 md:py-20">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 pt-8">
-                        {cases.map((c) => (
-                            <div key={c.id}>
-                                <div className="w-[350px] group overflow-hidden rounded-xl bg-case-card-pattern bg-cover bg-center text-gray-50">
-                                    <div className="before:duration-700 before:absolute before:w-28 before:h-28 before:bg-transparent before:blur-none before:border-8 before:opacity-50 before:rounded-full before:-left-4 before:-top-12 w-64 h-48  flex flex-col justify-between relative z-10 group-hover:before:top-28 group-hover:before:left-44 group-hover:before:scale-125 group-hover:before:blur">
-                                        <div className="text p-3 flex flex-col justify-evenly h-full">
-                                            <span className="font-bold text-2xl">{c.title}</span>
-                                            <p className="subtitle">{c.hints.length} hints • {c.suspects.length} suspects</p>
-                                        </div>
-                                        <div className="w-[350px] flex flex-row justify-between z-10">
-                                            <div className="hover:opacity-90 py-3 bg-cyan-50 w-full flex justify-center">
-
+                    {blockClicks && <div className="fixed inset-0 z-40" />}
+                    <div className="mt-6 flex-1 overflow-auto">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 pb-4">
+                            {cases.map((c) => (
+                                <Link key={c.id} href={`/case-files/${c.id}`} className="group block">
+                                    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40 backdrop-blur transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:border-white/20">
+                                        <div className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-br from-white to-transparent" />
+                                        <div className="p-5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-funnel-display text-xl">{c.title}</span>
+                                                <span className="text-xs text-white/60">#{c.id.slice(0, 6)}</span>
                                             </div>
-                                            <div className="hover:opacity-90 py-3 bg-cyan-50 w-full flex justify-end p-4">
-                                                <Link href={`/case-files/${c.id}`} className="group block ">
-                                                    <Image src="/assets/button.png" alt="view" width={24} height={24} />
-                                                </Link>
+                                            <div className="mt-2 text-sm text-white/70 line-clamp-2 font-funnel-display">
+                                                {c.excerpt}
                                             </div>
-
+                                            <div className="mt-4 flex -space-x-2">
+                                                {c.suspects.slice(0, 2).map((s) => (
+                                                    <Image key={s.id} src={s.image} alt={s.name} width={28} height={28} className="rounded-full ring-1 ring-white/20" />
+                                                ))}
+                                            </div>
+                                            <div className="mt-6 flex items-center justify-between text-sm">
+                                                <span className="text-white/50 font-funnel-display uppercase tracking-wider">{c.hints.length} hints • {c.suspects.length} suspects</span>
+                                                <span className="font-funnel-display text-white/80 group-hover:text-white transition-colors">Open ›</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        ))}
+                                </Link>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -35,26 +35,21 @@ export const WalletConnect = () => {
                         {(() => {
                             if (!connected) {
                                 return (
-                                    <div className='flex fixed bottom-10 justify-center items-center'>
-                                        <button onClick={openConnectModal} type="button">
-                                            <div className="font-funnel-display text-xl fixed bottom-20 right-50">
-                                                _ CONNECT WALLET _
-                                            </div>
-                                        </button>
-                                    </div>
-
-
+                                    <button onClick={openConnectModal} type="button" className="border border-white/60 hover:border-white px-5 py-2 font-funnel-display">
+                                        Connect Wallet
+                                    </button>
                                 );
                             }
                             if (chain.unsupported) {
                                 return (
-                                    <div className='flex fixed bottom-10 justify-center items-center'>
-                                        <button onClick={openChainModal} type="button" className="font-funnel-display text-xl fixed bottom-20 right-50">
-                                            _ WRONG NETWORK _
-                                        </button>
-                                    </div>
+                                    <button onClick={openChainModal} type="button" className="border border-white/60 hover:border-white px-5 py-2 font-funnel-display">
+                                        Switch Network
+                                    </button>
                                 );
                             }
+                            return (
+                                <div className="font-funnel-display text-white/80">{account.displayName}</div>
+                            );
                         })()}
                     </div>
                 );

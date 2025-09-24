@@ -16,7 +16,7 @@ import { http } from "wagmi";
 const queryClient = new QueryClient();
 
 const config = getDefaultConfig({
-  appName: "Randamu",
+  appName: "CrimeFiles",
   projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID!,
   chains: [
     baseSepolia,
