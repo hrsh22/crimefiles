@@ -7,6 +7,8 @@ export const supportedChains: Array<Chain> = [baseSepolia];
 
 export const CONTRACT_ADDRESS = '0x19a367E12Ea972a2eBCdFc46e26970892347d150';
 
+export const NEAR_AUTH = '{"message":"Login to NEAR AI","nonce":"1758695545081","recipient":"ai.near","callback_url":"http://localhost:3001/","signature":"GXsOI8Hslsp24cOxpMh2jebcZuTomGrR+9Wl7CpOAOm4arNowHnmwRGUEG7TM9MgRh55KBkVp1xDKERSphCsBA==","account_id":"likelyuser9518.near","public_key":"ed25519:EfLTmghiZBQr9PPAew72DcMSd3583T7pE3ewQqbs4Knh"}';
+
 export const CONTRACT_ABI = [
     {
         "inputs": [],

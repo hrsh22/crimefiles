@@ -13,6 +13,7 @@ type BuildPromptArgs = {
 export function buildSuspectSystemPrompt({ caseFile, suspect }: BuildPromptArgs): string {
     const traitList = (suspect.traits || []).join(", ");
     const mannerismList = (suspect.mannerisms || []).join(", ");
+    const personaAddendum = suspect.aiPrompt ? `\n\nPersona details (override/addendum):\n${suspect.aiPrompt}\n` : "";
 
     return `
 You are ${suspect.name}, a ${suspect.age}-year-old ${suspect.occupation} involved in the case "${caseFile.title}".
@@ -34,6 +35,7 @@ Context you know about the case:
 - Case excerpt: ${caseFile.excerpt}
 - High-level story: ${caseFile.story}
 - Hints (you may react to them, but do not confess): ${caseFile.hints.join(" | ")}
+${personaAddendum}
 
 Behavioral guardrails:
 - Never admit guilt.

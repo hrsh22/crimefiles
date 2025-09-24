@@ -60,6 +60,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [chatInput, setChatInput] = useState<string>("");
     const [messages, setMessages] = useState<Array<{ sender: "you" | "suspect"; text: string }>>([]);
     const [isSending, setIsSending] = useState<boolean>(false);
+    const [isHydrating, setIsHydrating] = useState<boolean>(false);
+
+    // Hints unlocking state (simple: start with 1, increment on unlock)
+    const [unlockedHintsCount, setUnlockedHintsCount] = useState<number>(1);
 
     const TabNames = ["Case File", "Hints", "Suspects", "My Verdict"];
 
@@ -67,6 +71,16 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         if (!caseFile) return undefined;
         return caseFile.suspects.find((s) => s.id === selectedSuspectId);
     }, [caseFile, selectedSuspectId]);
+
+    const visibleHintsCount = useMemo(() => {
+        if (!caseFile) return 0;
+        return Math.min(unlockedHintsCount, caseFile.hints.length);
+    }, [caseFile, unlockedHintsCount]);
+
+    const unlockNextHint = () => {
+        if (!caseFile) return;
+        setUnlockedHintsCount((prev) => Math.min(prev + 1, caseFile.hints.length));
+    };
 
     const handlePrev = () => {
         if (!caseFile) return;
@@ -104,9 +118,27 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         setSelectedSuspectId(suspectId);
         setIsInterrogationOpen(true);
         setChatInput("");
-        setMessages([
-            { sender: "suspect", text: "You think I did it? Ask your questions." }
-        ]);
+        // Hydrate from localStorage only for smooth UX
+        setIsHydrating(true);
+        try {
+            const msgsKey = `near_thread_msgs_${suspectId}`;
+            const raw = typeof window !== 'undefined' ? localStorage.getItem(msgsKey) : null;
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw) as Array<{ sender: "you" | "suspect"; text: string }>;
+                    if (Array.isArray(parsed)) {
+                        setMessages(parsed);
+                        setIsHydrating(false);
+                        return;
+                    }
+                } catch { }
+            }
+        } catch (error) {
+            console.error("Failed to load cached thread messages:", error);
+        }
+        // If no cache, start empty
+        setMessages([]);
+        setIsHydrating(false);
     };
 
     const closeInterrogation = () => {
@@ -117,30 +149,35 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         const trimmed = chatInput.trim();
         if (!trimmed || !selectedSuspectId || isSending) return;
 
-        // Add user message to the chat
+        // Add user message locally and persist
         const userMsg = { sender: "you" as const, text: trimmed };
-        setMessages((prev) => [...prev, userMsg]);
+        const nextAfterUser = [...messages, userMsg];
+        setMessages(nextAfterUser);
         setChatInput("");
+        try {
+            const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
+            localStorage.setItem(msgsKey, JSON.stringify(nextAfterUser));
+        } catch { }
 
-        // Convert messages to API format (role: user/assistant)
-        const apiMessages = messages.map(msg => ({
-            role: msg.sender === "you" ? "user" as const : "assistant" as const,
-            content: msg.text
-        }));
-
-        // Add the current user message
-        apiMessages.push({ role: "user", content: trimmed });
+        // Send only the latest user message (thread maintains context)
+        const latestMessage = { role: "user" as const, content: trimmed };
 
         try {
             setIsSending(true);
+            // Persist thread per suspect in localStorage
+            const storageKey = `near_thread_${selectedSuspectId}`;
+            let existingThreadId: string | undefined = undefined;
+            try {
+                existingThreadId = localStorage.getItem(storageKey) || undefined;
+            } catch { }
+
             const response = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    caseId: id,
                     suspectId: selectedSuspectId,
-                    messages: apiMessages,
-                    case: caseFile
+                    messages: [latestMessage],
+                    threadId: existingThreadId,
                 })
             });
 
@@ -153,17 +190,28 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     text: "I have nothing to say right now."
                 }]);
             } else if (data.response) {
-                setMessages((prev) => [...prev, {
-                    sender: "suspect",
-                    text: data.response
-                }]);
+                try {
+                    if (data.threadId) {
+                        localStorage.setItem(storageKey, data.threadId as string);
+                    }
+                } catch { }
+                const assistantMsg = { sender: "suspect" as const, text: data.response as string };
+                const nextAfterAssistant = [...nextAfterUser, assistantMsg];
+                setMessages(nextAfterAssistant);
+                try {
+                    const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
+                    localStorage.setItem(msgsKey, JSON.stringify(nextAfterAssistant));
+                } catch { }
             }
         } catch (error) {
             console.error("Failed to get response:", error);
-            setMessages((prev) => [...prev, {
-                sender: "suspect",
-                text: "I need a moment to think..."
-            }]);
+            const fallback = { sender: "suspect" as const, text: "I need a moment to think..." };
+            const nextWithFallback = [...messages, { sender: "you" as const, text: trimmed }, fallback];
+            setMessages(nextWithFallback);
+            try {
+                const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
+                localStorage.setItem(msgsKey, JSON.stringify(nextWithFallback));
+            } catch { }
         } finally {
             setIsSending(false);
         }
@@ -229,7 +277,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <p className="mt-2 text-[#2b2f6a] font-funnel-display mb-8">{caseFile.excerpt}</p>
                                 <div className="mt-6">
                                     <div className="text-[11px] uppercase tracking-widest text-zinc-400 mb-4">Case File</div>
-                                    <p className="mt-2 leading-7 text-[#2b2f6a] font-funnel-display w-[750px]">{caseFile.story}</p>
+                                    <p className="mt-2 leading-7 whitespace-pre-wrap break-words text-[#2b2f6a] font-funnel-display w-[750px]">{caseFile.story}</p>
                                 </div>
                             </div>
                         </div>
@@ -241,15 +289,33 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <div className="p-8 fixed bottom-5">
                                     <h1 className="text-[#2b2f6a] text-6xl font-funnel-display mb-4">{caseFile.title}</h1>
                                     <p className="mt-2 text-[#2b2f6a] font-funnel-display mb-8">{caseFile.excerpt}</p>
+                                    <div className="text-[11px] uppercase tracking-widest text-zinc-400 py-4">Hints</div>
                                     <ul className="mt-3 space-y-2">
-                                        <div className="text-[11px] uppercase tracking-widest text-zinc-400 py-4">Hints</div>
-                                        {caseFile.hints.map((hint, idx) => (
-                                            <li key={idx} className="flex gap-2 text-[#2b2f6a] font-funnel-display">
-                                                <Image src="/assets/background/hintIcon.png" alt="hint" width={22} height={20} />
-                                                <span>{hint}</span>
-                                            </li>
-                                        ))}
+                                        {caseFile.hints.map((hint, idx) => {
+                                            const isUnlocked = idx < visibleHintsCount;
+                                            return (
+                                                <li key={idx} className="flex items-center gap-2 font-funnel-display">
+                                                    <Image src="/assets/background/hintIcon.png" alt="hint" width={22} height={20} />
+                                                    {isUnlocked ? (
+                                                        <span className="text-[#2b2f6a]">{hint}</span>
+                                                    ) : (
+                                                        <div className="flex items-center gap-3 text-zinc-500">
+                                                            <span className="select-none">Locked hint</span>
+                                                            <button
+                                                                onClick={unlockNextHint}
+                                                                className="border border-[#2b2f6a] text-[#2b2f6a] px-3 py-0.5 hover:bg-[#2b2f6a]/10"
+                                                            >
+                                                                Unlock now
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
+                                    <div className="mt-4 text-xs text-zinc-500">
+                                        {visibleHintsCount}/{caseFile.hints.length} hints unlocked
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -398,6 +464,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 </button>
                             </div>
                             <div className="h-80 md:h-96 overflow-y-auto px-4 py-3 space-y-3 bg-white">
+                                {isHydrating && (
+                                    <div className="text-sm text-zinc-500">Loading previous messages…</div>
+                                )}
                                 {messages.map((m, idx) => (
                                     <div key={idx} className={`flex ${m.sender === "you" ? "justify-end" : "justify-start"}`}>
                                         <div className={`${m.sender === "you" ? "bg-[#2b2f6a] text-white" : "bg-zinc-100 text-[#1e2a42]"} px-3 py-2 rounded-md max-w-[80%]`}>
@@ -420,7 +489,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                     disabled={!chatInput.trim() || isSending}
                                     className={`h-10 px-4 border border-[#2b2f6a] text-[#2b2f6a] ${(!chatInput.trim() || isSending) ? "opacity-50 cursor-not-allowed" : "hover:bg-[#2b2f6a]/10"}`}
                                 >
-                                    {isSending ? "Sending..." : "Send"}
+                                    {isSending ? "Sending…" : "Send"}
                                 </button>
                             </div>
                         </div>
