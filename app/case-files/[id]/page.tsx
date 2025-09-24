@@ -45,6 +45,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         story: (json as Partial<CaseFile>)?.story ?? "",
                         hints: Array.isArray((json as Partial<CaseFile>)?.hints) ? ((json as Partial<CaseFile>)?.hints as string[]) : [],
                         suspects: normalizedSuspects,
+                        timeline: (json as Partial<CaseFile>)?.timeline as CaseFile["timeline"] | undefined,
                     };
                     setCidCase(normalized);
                 }
@@ -70,10 +71,47 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [playingIdx, setPlayingIdx] = useState<number | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
+    // Timeline interactivity state
+    const [timelineZoom, setTimelineZoom] = useState<number>(140); // px per tick
+    const [visibleLaneIds, setVisibleLaneIds] = useState<string[]>([]);
+    const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+
+    const allTags = useMemo(() => {
+        if (!cidCase?.timeline && !getCaseById(id)?.timeline) return new Set<string>();
+        const t = (getCaseById(id)?.timeline ?? cidCase?.timeline)!;
+        const tags = new Set<string>();
+        for (const ev of t.events) {
+            for (const tg of (ev.tags ?? [])) tags.add(tg);
+        }
+        return tags;
+    }, [id, cidCase]);
+
+    useEffect(() => {
+        const t = (getCaseById(id)?.timeline ?? cidCase?.timeline);
+        if (!t) return;
+        // hide solution lane/tags by default (no spoilers)
+        setVisibleLaneIds(t.lanes.filter(l => l.kind !== 'solution').map(l => l.id));
+        const defaults = new Set<string>(Array.from(allTags));
+        defaults.delete('Solution');
+        setActiveTags(defaults);
+    }, [id, cidCase, allTags]);
+
+    const toggleLane = (laneId: string) => {
+        setVisibleLaneIds(prev => prev.includes(laneId) ? prev.filter(id => id !== laneId) : [...prev, laneId]);
+    };
+
+    const toggleTag = (tag: string) => {
+        setActiveTags(prev => {
+            const next = new Set(prev);
+            if (next.has(tag)) next.delete(tag); else next.add(tag);
+            return next;
+        });
+    };
+
     // Hints unlocking state (simple: start with 1, increment on unlock)
     const [unlockedHintsCount, setUnlockedHintsCount] = useState<number>(1);
 
-    const TabNames = ["Case File", "Hints", "Suspects", "My Verdict"];
+    const TabNames = ["Case File", "Hints", "Suspects", "My Verdict", "Timeline"];
 
     const selectedSuspect = useMemo(() => {
         if (!caseFile) return undefined;
@@ -321,13 +359,15 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         );
     }
 
+    const timeline = caseFile.timeline;
+
     return (
         <main className="w-full h-[calc(100vh-4rem)] text-white relative overflow-hidden bg-gradient-to-b from-[#0b0c10] via-[#0f1218] to-[#0b0c10]">
             <div className="flex h-full">
                 {/* Left vertical tabs */}
                 <aside className="w-56 h-full p-6 border-r border-white/10 bg-black/30 backdrop-blur overflow-auto">
                     <div className="font-funnel-display text-sm tracking-widest text-white/60 uppercase mb-4">Dossier</div>
-                    {[1, 2, 3, 4].map((n) => (
+                    {[1, 2, 3, 4, 5].map((n) => (
                         <button
                             key={n}
                             onClick={() => setActiveTab(n)}
@@ -495,6 +535,118 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 5 && (
+                        <div className="p-6 md:p-10">
+                            <div className="flex items-center justify-between mb-3">
+                                <h2 className="text-3xl md:text-4xl font-funnel-display">Case Timeline</h2>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setTimelineZoom((z) => Math.max(100, z - 20))} className="h-8 w-8 grid place-items-center border border-white/30 text-white/80 hover:bg-white/10" aria-label="Zoom out">−</button>
+                                    <div className="text-white/60 text-xs w-16 text-center">{timelineZoom}px</div>
+                                    <button onClick={() => setTimelineZoom((z) => Math.min(260, z + 20))} className="h-8 w-8 grid place-items-center border border-white/30 text-white/80 hover:bg-white/10" aria-label="Zoom in">+</button>
+                                </div>
+                            </div>
+
+                            {!timeline ? (
+                                <div className="text-white/60 font-funnel-display">No timeline data for this case.</div>
+                            ) : (
+                                <>
+                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                        <span className="text-[11px] uppercase tracking-widest text-white/60 mr-1">Tags</span>
+                                        {Array.from(allTags).map((tag) => {
+                                            const checked = activeTags.has(tag);
+                                            const label = tag === 'Solution' ? 'Lead' : tag;
+                                            return (
+                                                <button key={tag} onClick={() => toggleTag(tag)} className={`px-2 py-1 border text-xs font-funnel-display ${checked ? 'bg-white/15 border-white/40 text-white' : 'bg-black/30 border-white/20 text-white/70'} hover:bg-white/10`} aria-pressed={checked}>
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                                        <span className="text-[11px] uppercase tracking-widest text-white/60 mr-1">Lanes</span>
+                                        {timeline.lanes.map((lane) => {
+                                            const checked = visibleLaneIds.includes(lane.id);
+                                            const label = lane.kind === 'solution' ? 'Leads' : lane.title;
+                                            return (
+                                                <button key={lane.id} onClick={() => toggleLane(lane.id)} className={`px-2 py-1 border text-xs font-funnel-display ${checked ? 'bg-white/15 border-white/40 text-white' : 'bg-black/30 border-white/20 text-white/70'} hover:bg-white/10`} aria-pressed={checked}>
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="w-full border border-white/10 bg-black/30 rounded-lg overflow-hidden">
+                                        <div className="grid grid-cols-[200px_1fr]">
+                                            <div className="border-r border-white/10 bg-black/50">
+                                                <div className="h-10 md:h-12 border-b border-white/10" />
+                                                {timeline.lanes.filter(l => visibleLaneIds.includes(l.id)).map((lane) => (
+                                                    <div key={lane.id} className="h-16 md:h-20 flex items-center px-4 border-b border-white/10">
+                                                        <div className={`font-funnel-display ${lane.kind === 'solution' ? 'text-emerald-300' : lane.kind === 'victim' ? 'text-white' : lane.kind === 'witness' ? 'text-sky-300' : 'text-white/80'}`}>{lane.kind === 'solution' ? 'Leads' : lane.title}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="overflow-x-auto overscroll-contain">
+                                                <div className="sticky top-0 z-10 bg-black/60 backdrop-blur border-b border-white/10">
+                                                    <div className="grid" style={{ gridTemplateColumns: `200px repeat(${timeline.ticks.length}, minmax(${timelineZoom}px, 1fr))` }}>
+                                                        <div className="h-10 md:h-12 border-r border-white/10 bg-black/50" />
+                                                        {timeline.ticks.map((t) => (
+                                                            <div key={t.id} className="h-10 md:h-12 border-r border-white/10 grid place-items-center font-funnel-display text-white/70 text-xs md:text-sm">
+                                                                {t.label}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    {timeline.lanes.filter(l => visibleLaneIds.includes(l.id)).map((lane) => (
+                                                        <div key={lane.id} className="relative border-b border-white/10">
+                                                            <div className="grid" style={{ gridTemplateColumns: `200px repeat(${timeline.ticks.length}, minmax(${timelineZoom}px, 1fr))` }}>
+                                                                <div className="h-16 md:h-20 border-r border-white/10 bg-transparent" />
+                                                                {timeline.ticks.map((t) => (
+                                                                    <div key={t.id} className="h-16 md:h-20 border-r border-white/5" />
+                                                                ))}
+                                                            </div>
+                                                            <div className="absolute inset-0 px-2 md:px-3 grid" style={{ gridTemplateColumns: `200px repeat(${timeline.ticks.length}, minmax(${timelineZoom}px, 1fr))` }}>
+                                                                <div />
+                                                                {timeline.events
+                                                                    .filter(e => e.laneId === lane.id)
+                                                                    .filter(e => {
+                                                                        const tags = e.tags ?? [];
+                                                                        if (activeTags.size === 0) return true;
+                                                                        if (tags.length === 0) return true;
+                                                                        return tags.some(t => activeTags.has(t));
+                                                                    })
+                                                                    .map((e) => {
+                                                                        const colStart = e.startTick;
+                                                                        const colEnd = (e.endTick ?? e.startTick);
+                                                                        const span = Math.max(1, colEnd - colStart + 1);
+                                                                        const isLead = (e.tags ?? []).includes('Solution');
+                                                                        const title = isLead && !activeTags.has('Solution') ? 'Lead (redacted)' : e.title;
+                                                                        return (
+                                                                            <div key={e.id} className="h-full py-2" style={{ gridColumn: `${colStart + 1} / span ${span}` }}>
+                                                                                <div className={`h-full w-full rounded border px-2 md:px-3 flex items-center gap-2 text-xs md:text-sm font-funnel-display shadow-sm hover:shadow ${lane.kind === 'solution' ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200' : lane.kind === 'victim' ? 'bg-white/10 border-white/30 text-white' : lane.kind === 'witness' ? 'bg-sky-500/15 border-sky-400/40 text-sky-200' : 'bg-amber-500/10 border-amber-400/40 text-amber-200'}`} title={title}>
+                                                                                    <span className="truncate flex-1">{title}</span>
+                                                                                    {(e.tags ?? []).slice(0, 3).map((tag, i) => (
+                                                                                        <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] ${tag === 'Means' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' : tag === 'Motive' ? 'bg-orange-500/20 text-orange-200 border border-orange-400/30' : tag === 'Opportunity' ? 'bg-yellow-500/20 text-yellow-200 border border-yellow-400/30' : tag === 'Witness' ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30' : tag === 'Solution' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' : 'bg-white/10 text-white/80 border border-white/20'}`}>{tag === 'Solution' ? 'Lead' : tag}</span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 

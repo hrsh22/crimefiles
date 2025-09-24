@@ -12,6 +12,23 @@ export type Suspect = {
     whereabouts?: string[]; // new: structured whereabouts
 };
 
+export type TimelineTick = { id: string; label: string };
+export type TimelineLane = { id: string; title: string; kind: "victim" | "suspect" | "witness" | "solution" };
+export type TimelineEventTag = "Means" | "Motive" | "Opportunity" | "Alibi" | "Witness" | "Action" | "Clue" | "Solution";
+export type TimelineEvent = {
+    id: string;
+    laneId: string;
+    startTick: number; // index in ticks array
+    endTick?: number;  // inclusive index; if omitted, spans 1 cell
+    title: string;
+    tags?: TimelineEventTag[];
+};
+export type Timeline = {
+    ticks: TimelineTick[];
+    lanes: TimelineLane[];
+    events: TimelineEvent[];
+};
+
 export type CaseFile = {
     id: string;
     title: string;
@@ -19,6 +36,7 @@ export type CaseFile = {
     story: string;
     hints: string[];
     suspects: Suspect[];
+    timeline?: Timeline;
 };
 
 const cases: CaseFile[] = [
@@ -110,6 +128,34 @@ const cases: CaseFile[] = [
                 aiPrompt: "Role: You are Maya Singh, the victim's personal secretary. Personality: Quiet and unassuming with a sharp intellect. Present a vulnerable, grieving persona but stay controlled. Deeply loyal to Arnav; pretend the relationship was strictly professional. Background Knowledge: You were Arnav's lover and the real killer. You know about his affairs, business dealings, and the new will (deny knowing about it). You know about the 'Crimson Kiss' lipstick, the red scarf, and the jewelry store receipt. You planted the letter opener. Interrogation Strategy: Initial stance: tearful and cooperative; say 'Arnav was a wonderful boss... He was so kind to me.' On personal life: 'He was very private. I only handled professional matters.' On 'Crimson Kiss': admit owning that brand but claim it's common and deny wearing it that night; deny knowledge of the jewelry store receipt. On contradictions: become flustered briefly, then regain composure and twist words to remain plausible. Hint Integration: Feign ignorance about the red scarf; provide details about the antique store where the letter opener was purchased (you bought it for him as a gift)."
             }
         ],
+        timeline: {
+            ticks: [
+                { id: "t-60", label: "-60m" },
+                { id: "t-30", label: "-30m" },
+                { id: "t-15", label: "-15m" },
+                { id: "t0", label: "11:30 PM (Murder)" },
+                { id: "t+15", label: "+15m" },
+                { id: "t+30", label: "+30m" },
+            ],
+            lanes: [
+                { id: "victim", title: "Arnav Sharma (Victim)", kind: "victim" },
+                { id: "s1", title: "Isha Kapoor", kind: "suspect" },
+                { id: "s2", title: "Rohan Mehta", kind: "suspect" },
+                { id: "s3", title: "Maya Singh", kind: "suspect" },
+                { id: "witnesses", title: "Witnesses / Staff", kind: "witness" },
+                { id: "solution", title: "Solution", kind: "solution" },
+            ],
+            events: [
+                { id: "e1", laneId: "victim", startTick: 1, endTick: 2, title: "Private meeting in dining room", tags: ["Action"] },
+                { id: "e2", laneId: "victim", startTick: 3, endTick: 3, title: "Fatal stab with letter opener", tags: ["Means"] },
+                { id: "e3", laneId: "s1", startTick: 0, endTick: 4, title: "Claims at home; staff-only alibi", tags: ["Alibi"] },
+                { id: "e4", laneId: "s2", startTick: 0, endTick: 1, title: "Business dinner; leaves early (~10:30 PM)", tags: ["Motive", "Opportunity"] },
+                { id: "e5", laneId: "s3", startTick: 1, endTick: 2, title: "Seen near private corridor", tags: ["Witness", "Opportunity"] },
+                { id: "e6", laneId: "witnesses", startTick: 2, endTick: 2, title: "Waiter hears raised voices", tags: ["Witness"] },
+                { id: "e7", laneId: "witnesses", startTick: 4, endTick: 4, title: "Body discovered by waiter", tags: ["Witness"] },
+                { id: "e8", laneId: "solution", startTick: 5, endTick: 5, title: "Primary lead identified (pending)", tags: ["Solution"] },
+            ],
+        },
     },
 ];
 
