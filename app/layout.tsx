@@ -4,6 +4,7 @@ import { Funnel_Display, Funnel_Sans } from "next/font/google";
 import "./globals.css";
 import { ContextProvider } from ".";
 import ReactQueryProvider from "./ReactQueryProvider";
+import Header from "@/components/header";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 const geistMono = Geist_Mono({
@@ -23,8 +24,8 @@ const funnelSans = Funnel_Sans({
 
 // Websit Config
 export const metadata: Metadata = {
-  title: "Crime Files",
-  description: "Be the detective",
+  title: "CrimeFiles",
+  description: "Enter the case. Unravel the truth.",
 };
 
 export default function RootLayout({
@@ -38,7 +39,12 @@ export default function RootLayout({
         className={`${geist.variable} ${geistMono.variable} ${funnelDisplay.variable} ${funnelSans.variable} font-sans`}
       >
         <ReactQueryProvider>
-          <ContextProvider>{children}</ContextProvider>
+          <ContextProvider>
+            <Header />
+            <div className="pt-16 min-h-screen">
+              {children}
+            </div>
+          </ContextProvider>
         </ReactQueryProvider>
       </body>
     </html>

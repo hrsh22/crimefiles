@@ -2,49 +2,36 @@ import Image from "next/image";
 
 export default function Footer() {
   return (
-    <footer className="bg-black-pattern text-white py-8 md:py-12">
-      <div className="container mx-auto px-4">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6 md:gap-0">
-          <div className="text-center md:text-left">
-            <Image
-              className="cursor-pointer"
-              src="/assets/logos/lightLogo.svg"
-              width={150}
-              height={150}
-              alt="Randamu Logo"
-            />
-            <p className="font-funnel-display text-gray-400 mb-2">Randamu</p>
-          </div>
-          <div className="flex space-x-6">
-            <a
-              href="https://docs.randa.mu/"
-              target="_blank"
-              className="text-gray-400 hover:text-black transition-colors duration-300 font-funnel-display"
-            >
-              Documentation
-            </a>
-            <a
-              href="https://github.com/randa-mu"
-              target="_blank"
-              className="text-gray-400 hover:text-black transition-colors duration-300 font-funnel-display"
-            >
-              GitHub
-            </a>
-            <a
-              href="https://x.com/RandamuInc/"
-              target="_blank"
-              className="text-gray-400 hover:text-black transition-colors duration-300 font-funnel-display"
-            >
-              Twitter
-            </a>
-          </div>
+    <footer className="text-white py-10 border-t border-white/10 bg-black/50">
+      <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-3">
+          <Image
+            className="cursor-pointer"
+            src="/assets/logo.svg"
+            width={28}
+            height={28}
+            alt="CrimeFiles Logo"
+          />
+          <p className="font-funnel-display text-white/80">CrimeFiles</p>
         </div>
-        <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-gray-800 text-center">
-          <p className="font-funnel-display text-gray-400">
-            Built with ❤️ by FIL-B
-          </p>
+        <div className="flex items-center gap-6">
+          <a
+            href="https://github.com/"
+            target="_blank"
+            className="text-white/60 hover:text-white transition-colors font-funnel-display text-sm"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://x.com/"
+            target="_blank"
+            className="text-white/60 hover:text-white transition-colors font-funnel-display text-sm"
+          >
+            X
+          </a>
         </div>
       </div>
+      <div className="mt-6 text-center text-white/40 text-sm">© {new Date().getFullYear()} CrimeFiles. All rights reserved.</div>
     </footer>
   );
 }

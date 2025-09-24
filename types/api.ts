@@ -5,4 +5,4 @@ export type ChatMessage = {
     content: string;
 };
 
-export type AgentResponse = { response?: string; error?: string };
+export type AgentResponse = { response?: string; threadId?: string; error?: string };
