@@ -35,7 +35,6 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         gender: s?.gender ?? "M",
                         traits: s?.traits ?? [],
                         mannerisms: s?.mannerisms ?? [],
-                        aiPrompt: (s as { aiPrompt?: string })?.aiPrompt,
                         whereabouts: Array.isArray((s as { whereabouts?: unknown }).whereabouts) ? ((s as { whereabouts: string[] }).whereabouts) : undefined,
                     }));
                     const normalized: CaseFile = {
