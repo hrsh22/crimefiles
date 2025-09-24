@@ -1,11 +1,12 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { getCaseById } from "../cases";
 import type { CaseFile } from "../cases";
 import Wallet from "@/app/wallet";
 import { useAccount } from 'wagmi';
+import { Volume2, Loader2, Square } from "lucide-react";
 
 export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = React.use(params as Promise<{ id: string }>);
@@ -23,7 +24,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 const res = await fetch(url);
                 const json = await res.json();
                 if (json && typeof json === "object") {
-                    const normalizedSuspects = (Array.isArray(json.suspects) ? json.suspects : []).map((s: Partial<CaseFile["suspects"][number]>, i: number) => ({
+                    const suspectsInput = (Array.isArray((json as { suspects?: unknown }).suspects) ? (json as { suspects: unknown[] }).suspects : []) as Partial<CaseFile["suspects"][number]>[];
+                    const normalizedSuspects = suspectsInput.map((s, i): CaseFile["suspects"][number] => ({
                         id: s?.id ?? `s${i + 1}`,
                         name: s?.name ?? `Suspect ${i + 1}`,
                         description: s?.description ?? undefined,
@@ -33,6 +35,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         gender: s?.gender ?? "M",
                         traits: s?.traits ?? [],
                         mannerisms: s?.mannerisms ?? [],
+                        aiPrompt: (s as { aiPrompt?: string })?.aiPrompt,
+                        whereabouts: Array.isArray((s as { whereabouts?: unknown }).whereabouts) ? ((s as { whereabouts: string[] }).whereabouts) : undefined,
                     }));
                     const normalized: CaseFile = {
                         id: (json as Partial<CaseFile>)?.id ?? id,
@@ -48,6 +52,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             finally { setIsLoading(false); }
         })();
     }, [id]);
+
     const [selectedSuspectId, setSelectedSuspectId] = useState<string>("");
     const { isConnected } = useAccount();
     const [activeTab, setActiveTab] = useState<number>(1);
@@ -59,6 +64,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [messages, setMessages] = useState<Array<{ sender: "you" | "suspect"; text: string }>>([]);
     const [isSending, setIsSending] = useState<boolean>(false);
     const [isHydrating, setIsHydrating] = useState<boolean>(false);
+
+    // TTS states
+    const [generatingIdx, setGeneratingIdx] = useState<number | null>(null);
+    const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
     // Hints unlocking state (simple: start with 1, increment on unlock)
     const [unlockedHintsCount, setUnlockedHintsCount] = useState<number>(1);
@@ -112,11 +122,49 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         setTouchEndX(null);
     };
 
-    const openInterrogation = async (suspectId: string) => {
-        setSelectedSuspectId(suspectId);
-        setIsInterrogationOpen(true);
+    const stopTts = () => {
+        try { audioRef.current?.pause?.(); } catch { }
+        try { if (audioRef.current) audioRef.current.currentTime = 0; } catch { }
+        audioRef.current = null;
+        setPlayingIdx(null);
+        setGeneratingIdx(null);
+    };
+
+    const playTts = async (text: string, idx: number) => {
+        try {
+            if (playingIdx === idx) { stopTts(); return; }
+            // stop any currently playing audio before starting a new one
+            if (playingIdx !== null && playingIdx !== idx) { stopTts(); }
+            setGeneratingIdx(idx);
+            const gender = selectedSuspect?.gender;
+            const res = await fetch("/api/tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, gender }),
+            });
+            if (!res.ok) throw new Error("TTS failed");
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                setPlayingIdx((cur) => (cur === idx ? null : cur));
+                audioRef.current = null;
+            };
+            setGeneratingIdx(null);
+            setPlayingIdx(idx);
+            await audio.play();
+        } catch (e) {
+            setPlayingIdx(null);
+            setGeneratingIdx(null);
+            audioRef.current = null;
+            console.error("Failed to play audio:", e);
+        }
+    };
+
+    const hydrateMessagesForSuspect = (suspectId: string) => {
         setChatInput("");
-        // Hydrate from localStorage only for smooth UX
         setIsHydrating(true);
         try {
             const msgsKey = `near_thread_msgs_${suspectId}`;
@@ -131,15 +179,30 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     }
                 } catch { }
             }
-        } catch (error) {
-            console.error("Failed to load cached thread messages:", error);
-        }
-        // If no cache, start empty
+        } catch { }
         setMessages([]);
         setIsHydrating(false);
     };
 
+    const openInterrogation = async (suspectId: string) => {
+        setSelectedSuspectId(suspectId);
+        setIsInterrogationOpen(true);
+        hydrateMessagesForSuspect(suspectId);
+    };
+
+    const switchInterrogationTo = (direction: "prev" | "next") => {
+        if (!caseFile || !caseFile.suspects.length) return;
+        stopTts();
+        const idx = caseFile.suspects.findIndex((s) => s.id === selectedSuspectId);
+        const len = caseFile.suspects.length;
+        const nextIdx = direction === "prev" ? (idx <= 0 ? len - 1 : idx - 1) : (idx >= len - 1 ? 0 : idx + 1);
+        const nextId = caseFile.suspects[nextIdx].id;
+        setSelectedSuspectId(nextId);
+        hydrateMessagesForSuspect(nextId);
+    };
+
     const closeInterrogation = () => {
+        stopTts();
         setIsInterrogationOpen(false);
     };
 
@@ -147,7 +210,6 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         const trimmed = chatInput.trim();
         if (!trimmed || !selectedSuspectId || isSending) return;
 
-        // Add user message locally and persist
         const userMsg = { sender: "you" as const, text: trimmed };
         const nextAfterUser = [...messages, userMsg];
         setMessages(nextAfterUser);
@@ -157,12 +219,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             localStorage.setItem(msgsKey, JSON.stringify(nextAfterUser));
         } catch { }
 
-        // Send only the latest user message (thread maintains context)
         const latestMessage = { role: "user" as const, content: trimmed };
 
         try {
             setIsSending(true);
-            // Persist thread per suspect in localStorage
             const storageKey = `near_thread_${selectedSuspectId}`;
             let existingThreadId: string | undefined = undefined;
             try {
@@ -183,10 +243,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
             if (data.error) {
                 console.error("Chat API error:", data.error);
-                setMessages((prev) => [...prev, {
-                    sender: "suspect",
-                    text: "I have nothing to say right now."
-                }]);
+                setMessages((prev) => [...prev, { sender: "suspect", text: "I have nothing to say right now." }]);
             } else if (data.response) {
                 try {
                     if (data.threadId) {
@@ -214,6 +271,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             setIsSending(false);
         }
     };
+
+    const chatScrollRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!isInterrogationOpen) return;
+        const el = chatScrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [isInterrogationOpen, messages]);
+
+    useEffect(() => {
+        // Prevent background/body scroll while overlay is open
+        if (isInterrogationOpen) {
+            const prev = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+            return () => { document.body.style.overflow = prev; };
+        }
+    }, [isInterrogationOpen]);
 
     if (!isConnected) {
         return (
@@ -428,49 +501,131 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 </section>
 
                 {isInterrogationOpen && (
-                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4">
-                        <div className="w-full max-w-2xl bg-black text-white border border-white/20 shadow-xl">
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                                <div className="font-funnel-display text-xl">
-                                    {selectedSuspect?.name ? `Interrogating ${selectedSuspect.name}` : "Interrogation"}
-                                </div>
-                                <button
-                                    onClick={closeInterrogation}
-                                    aria-label="Close interrogation"
-                                    className="text-white/70 hover:text-white"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                            <div className="h-80 md:h-96 overflow-y-auto px-4 py-3 space-y-3 bg-black/60">
-                                {isHydrating && (
-                                    <div className="text-sm text-white/60">Loading previous messages…</div>
-                                )}
-                                {messages.map((m, idx) => (
-                                    <div key={idx} className={`flex ${m.sender === "you" ? "justify-end" : "justify-start"}`}>
-                                        <div className={`${m.sender === "you" ? "bg-white text-black" : "bg-white/10 text-white"} px-3 py-2 rounded-md max-w-[80%]`}>
-                                            <div className="text-xs opacity-70 mb-0.5">{m.sender === "you" ? "You" : selectedSuspect?.name || "Suspect"}</div>
-                                            <div className="font-funnel-display">{m.text}</div>
-                                        </div>
+                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-0 overflow-hidden">
+                        <div className="w-full h-full grid grid-cols-1 md:grid-cols-[380px_1fr] min-h-0">
+                            {/* Left: suspect details */}
+                            <aside className="hidden md:block h-full border-r border-white/10 bg-black/70 overflow-y-auto p-6">
+                                <div className="flex items-center gap-4">
+                                    <Image className="rounded-md" src={selectedSuspect?.image || "/suspect.png"} alt="suspect" width={120} height={120} />
+                                    <div>
+                                        <div className="text-2xl font-funnel-display">{selectedSuspect?.name}</div>
+                                        <div className="text-white/70 font-funnel-display">{selectedSuspect?.occupation} • {selectedSuspect?.age} • {selectedSuspect?.gender}</div>
                                     </div>
-                                ))}
-                            </div>
-                            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 bg-black/60">
-                                <input
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter" && !isSending) handleSendMessage(); }}
-                                    placeholder="Ask a question..."
-                                    className="flex-1 border border-white/20 px-3 py-2 outline-none bg-transparent placeholder:text-white/50"
-                                />
-                                <button
-                                    onClick={handleSendMessage}
-                                    disabled={!chatInput.trim() || isSending}
-                                    className={`h-10 px-4 border border-white/40 text-white ${(!chatInput.trim() || isSending) ? "opacity-50 cursor-not-allowed" : "hover:bg-white/10"}`}
-                                >
-                                    {isSending ? "Sending…" : "Send"}
-                                </button>
-                            </div>
+                                </div>
+                                {selectedSuspect?.description && (
+                                    <p className="mt-4 text-white/80 font-funnel-display leading-relaxed">
+                                        {selectedSuspect.description}
+                                    </p>
+                                )}
+                                <div className="mt-6">
+                                    <div className="text-[11px] uppercase tracking-widest text-white/60 mb-2">Whereabouts</div>
+                                    {Array.isArray(selectedSuspect?.whereabouts) && selectedSuspect!.whereabouts!.length > 0 ? (
+                                        <ul className="space-y-1 text-white/85 font-funnel-display border border-white/10 bg-white/5 p-3 list-disc list-inside">
+                                            {selectedSuspect!.whereabouts!.map((w, i) => (
+                                                <li key={i}>{w}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <div className="border border-white/10 bg-white/5 p-3 font-funnel-display text-white/80">Unknown / not disclosed</div>
+                                    )}
+                                </div>
+                                {Array.isArray(selectedSuspect?.traits) && selectedSuspect!.traits!.length > 0 && (
+                                    <div className="mt-6">
+                                        <div className="text-[11px] uppercase tracking-widest text-white/60 mb-2">Traits</div>
+                                        <ul className="space-y-1 text-white/85 font-funnel-display">
+                                            {selectedSuspect!.traits!.map((t, i) => (
+                                                <li key={i}>• {t}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {Array.isArray(selectedSuspect?.mannerisms) && selectedSuspect!.mannerisms!.length > 0 && (
+                                    <div className="mt-6">
+                                        <div className="text-[11px] uppercase tracking-widest text-white/60 mb-2">Mannerisms</div>
+                                        <ul className="space-y-1 text-white/85 font-funnel-display">
+                                            {selectedSuspect!.mannerisms!.map((m, i) => (
+                                                <li key={i}>• {m}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                <div className="mt-6 flex items-center gap-3">
+                                    <button onClick={() => switchInterrogationTo("prev")} className="h-8 w-8 grid place-items-center border border-white/30 hover:bg-white/10">‹</button>
+                                    <button onClick={() => switchInterrogationTo("next")} className="h-8 w-8 grid place-items-center border border-white/30 hover:bg-white/10">›</button>
+                                </div>
+                                <div className="mt-6">
+                                    <button onClick={closeInterrogation} className="text-white/70 hover:text-white">Close</button>
+                                </div>
+                            </aside>
+
+                            {/* Right: chat */}
+                            <section className="h-full bg-black/60 border-l border-white/10 flex flex-col min-h-0">
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                                    <div className="font-funnel-display text-xl">
+                                        {selectedSuspect?.name ? `Interrogating ${selectedSuspect.name}` : "Interrogation"}
+                                    </div>
+                                    <button onClick={closeInterrogation} aria-label="Close interrogation" className="text-white/70 hover:text-white">✕</button>
+                                </div>
+                                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 overscroll-contain" ref={chatScrollRef}>
+                                    {isHydrating && (
+                                        <div className="text-sm text-white/60">Loading previous messages…</div>
+                                    )}
+                                    {messages.map((m, idx) => (
+                                        <div key={idx} className={`flex ${m.sender === "you" ? "justify-end" : "justify-start"}`}>
+                                            <div className={`${m.sender === "you" ? "bg-white text-black" : "bg-white/10 text-white"} px-3 py-2 rounded-md max-w-[80%]`}>
+                                                <div className="text-xs opacity-70 mb-0.5">{m.sender === "you" ? "You" : selectedSuspect?.name || "Suspect"}</div>
+                                                <div className="font-funnel-display">{m.text}</div>
+                                                {m.sender !== "you" && (
+                                                    <div className="mt-1 flex justify-end">
+                                                        <button onClick={() => (playingIdx === idx ? stopTts() : playTts(m.text, idx))} aria-label={playingIdx === idx ? "Stop voice" : (generatingIdx === idx ? "Generating voice" : "Play voice")} className="h-8 w-8 grid place-items-center rounded-full border border-white/20 bg-white/5 backdrop-blur-sm hover:bg-white/10 hover:border-white/30 shadow-sm transition transform hover:scale-105">
+                                                            {playingIdx === idx ? (
+                                                                <Square className="h-4 w-4" />
+                                                            ) : generatingIdx === idx ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Volume2 className="h-4 w-4" />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {isSending && (
+                                        <div className="flex justify-start">
+                                            <div className="bg-white/10 text-white px-3 py-2 rounded-md max-w-[80%]">
+                                                <div className="flex items-center gap-1 h-4">
+                                                    <span className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white/80" />
+                                                    <span className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white/80" />
+                                                    <span className="typing-dot inline-block h-1.5 w-1.5 rounded-full bg-white/80" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <style jsx>{`
+                                        @keyframes blink { 0% { opacity: .2 } 20% { opacity: 1 } 100% { opacity: .2 } }
+                                        .typing-dot { animation: blink 1.4s infinite both; }
+                                        .typing-dot:nth-child(2) { animation-delay: .2s; }
+                                        .typing-dot:nth-child(3) { animation-delay: .4s; }
+                                    `}</style>
+                                </div>
+                                <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 bg-black/60">
+                                    <input
+                                        value={chatInput}
+                                        onChange={(e) => setChatInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === "Enter" && !isSending) handleSendMessage(); }}
+                                        placeholder="Ask a question..."
+                                        className="flex-1 border border-white/20 px-3 py-2 outline-none bg-transparent placeholder:text-white/50"
+                                    />
+                                    <button
+                                        onClick={handleSendMessage}
+                                        disabled={!chatInput.trim() || isSending}
+                                        className={`h-10 px-4 border border-white/40 text-white ${(!chatInput.trim() || isSending) ? "opacity-50 cursor-not-allowed" : "hover:bg-white/10"}`}
+                                    >
+                                        Send
+                                    </button>
+                                </div>
+                            </section>
                         </div>
                     </div>
                 )}
