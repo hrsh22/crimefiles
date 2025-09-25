@@ -7,6 +7,7 @@ import { prepareAgentkitAndWalletProvider } from "@/lib/prepare-agentkit";
 import { buildCaseGenerationSystemPrompt } from "@/lib/prompts";
 import lighthouse from "@lighthouse-web3/sdk";
 import { GeneratedCaseSeed } from "@/lib/case-seeds";
+import { setCaseSolution } from "@/lib/solutions-store";
 
 export const runtime = "nodejs";
 
@@ -57,13 +58,20 @@ export async function POST(req: Request) {
         const { guiltySuspectId, crimestory, ...publicCase } = parsed as Record<string, unknown> & { guiltySuspectId?: unknown; crimestory?: unknown };
         console.log("guiltySuspectId:", guiltySuspectId);
         console.log("crimestory:", crimestory);
-        
+
         const uploadRes = await lighthouse.uploadText(JSON.stringify(publicCase), apiKey, name);
         const cid = uploadRes?.data?.Hash as string | undefined;
         if (!cid) {
             return NextResponse.json({ error: "Failed to upload to Lighthouse" }, { status: 500 });
         }
         (publicCase as { id: string }).id = cid;
+
+        // Persist solution mapping ephemerally for later distribution
+        if (typeof guiltySuspectId === "string") {
+            try {
+                setCaseSolution(cid, guiltySuspectId);
+            } catch { }
+        }
 
         // Return only essentials with cid
         return NextResponse.json({ case: { id: cid, cid, title: publicCase.title as string, excerpt: publicCase.excerpt as string }, guiltySuspectId, crimestory });

@@ -110,7 +110,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     // Hints unlocking state (simple: start with 1, increment on unlock)
     const [unlockedHintsCount, setUnlockedHintsCount] = useState<number>(1);
 
-    const TabNames = ["Case File", "Hints", "Suspects", "My Verdict", "Timeline"];
+    const TabNames = ["Case File", "Hints", "Suspects", "Timeline", "Your Verdict"];
 
     const selectedSuspect = useMemo(() => {
         if (!caseFile) return undefined;
@@ -360,6 +360,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
     const timeline = caseFile.timeline;
 
+    function formatNear(amount: number): string {
+        return amount.toString();
+    }
+
     return (
         <main className="w-full h-[calc(100vh-4rem)] text-white relative overflow-hidden bg-gradient-to-b from-[#0b0c10] via-[#0f1218] to-[#0b0c10]">
             <div className="flex h-full">
@@ -516,9 +520,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                     )}
 
-                    {activeTab === 4 && (
+                    {activeTab === 5 && (
                         <div className="p-10">
-                            <h2 className="text-4xl font-funnel-display mb-4">My Verdict</h2>
+                            <h2 className="text-4xl font-funnel-display mb-4">Your Verdict</h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {caseFile.suspects.map((c) => (
                                     <div key={c.id} className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
@@ -527,9 +531,27 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                             <div className="font-funnel-display text-2xl">{c.name}</div>
                                         </div>
                                         <div className="border-t border-white/10 flex items-center justify-end px-4 py-3">
-                                            <Link href={`/case-files/${c.id}`} className="font-funnel-display border border-white/40 px-3 py-1 hover:bg-white/10">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const fromNearAccountId = JSON.parse(process.env.NEXT_PUBLIC_NEAR_ACCOUNT_JSON || '{}')?.account_id || '';
+                                                        const amount = formatNear(0.1);
+                                                        const res = await fetch('/api/accuse', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ caseId: caseFile.id, suspectId: c.id, fromNearAccountId, amount }),
+                                                        });
+                                                        const json = await res.json();
+                                                        if (!res.ok) throw new Error(json.error || 'Failed');
+                                                        alert(`Send ${amount} NEAR to ${json.toNearAccountId}. Deposit id: ${json.id}`);
+                                                    } catch (e) {
+                                                        alert(`Failed: ${(e as Error).message}`);
+                                                    }
+                                                }}
+                                                className="font-funnel-display border border-white/40 px-3 py-1 hover:bg-white/10"
+                                            >
                                                 Accuse
-                                            </Link>
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -537,7 +559,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                     )}
 
-                    {activeTab === 5 && (
+                    {activeTab === 4 && (
                         <div className="p-6 md:p-10">
                             <div className="flex items-center justify-between mb-3">
                                 <h2 className="text-3xl md:text-4xl font-funnel-display">Case Timeline</h2>
@@ -631,7 +653,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                                                                 <div className={`h-full w-full rounded border px-2 md:px-3 flex items-center gap-2 text-xs md:text-sm font-funnel-display shadow-sm hover:shadow ${lane.kind === 'solution' ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200' : lane.kind === 'victim' ? 'bg-white/10 border-white/30 text-white' : lane.kind === 'witness' ? 'bg-sky-500/15 border-sky-400/40 text-sky-200' : 'bg-amber-500/10 border-amber-400/40 text-amber-200'}`} title={title}>
                                                                                     <span className="truncate flex-1">{title}</span>
                                                                                     {(e.tags ?? []).slice(0, 3).map((tag, i) => (
-                                                                                        <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] ${tag === 'Means' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' : tag === 'Motive' ? 'bg-orange-500/20 text-orange-200 border border-orange-400/30' : tag === 'Opportunity' ? 'bg-yellow-500/20 text-yellow-200 border border-yellow-400/30' : tag === 'Witness' ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30' : tag === 'Solution' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' : 'bg-white/10 text-white/80 border border-white/20'}`}>{tag === 'Solution' ? 'Lead' : tag}</span>
+                                                                                        <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] ${tag === 'Means' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' : tag === 'Motive' ? 'bg-orange-500/20 text-orange-200 border border-orange-400/30' : tag === 'Opportunity' ? 'bg-yellow-500/20 text-yellow-200 border border-yellow-400/30' : tag === 'Witness' ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30' : tag === 'Solution' ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : 'bg-white/10 text-white/80 border border-white/20'}`}>{tag === 'Solution' ? 'Lead' : tag}</span>
                                                                                     ))}
                                                                                 </div>
                                                                             </div>
