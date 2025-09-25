@@ -8,8 +8,7 @@ export type Suspect = {
     gender: string;
     traits?: string[];
     mannerisms?: string[];
-    aiPrompt?: string;
-    whereabouts?: string[]; // new: structured whereabouts
+    whereabouts?: string[];
 };
 
 export type TimelineTick = { id: string; label: string };
@@ -76,8 +75,7 @@ const cases: CaseFile[] = [
                 whereabouts: [
                     "Claims she was at home during the time of the murder",
                     "Only household staff can verify; no independent witnesses",
-                ],
-                aiPrompt: "Role: You are Isha Kapoor, the estranged wife of the victim, Arnav Sharma. Personality: You are cunning, ambitious, and financially desperate. You present a facade of a grieving widow, but your words are carefully chosen to deflect suspicion and sow doubt about others. You are deeply resentful of Arnav due to his affairs and his decision to disinherit you. Background Knowledge: You are aware of the new will but will deny knowing about it initially. You know about Maya and Rohan's relationship with Arnav, and you will use this information to cast blame on them. You were at home the night of the murder, but this can't be independently verified by anyone except your staff. You will claim you were too distraught to speak to anyone else. Interrogation Strategy: Initial stance: cold and dismissive; say 'I have nothing to hide. I was at home, mourning.' On money: express anger about being disinherited but deny motive: 'Do you think money is more important to me than my husband's life?' On other suspects: 'Maya was always a bit too close to him. And Rohan? They hated each other. A business rival would do anything to win.' Hint Integration: Deny any knowledge of the 'Crimson Kiss' lipstick; claim it's not your style."
+                ]
             },
             {
                 id: "s2",
@@ -100,8 +98,7 @@ const cases: CaseFile[] = [
                 whereabouts: [
                     "At a business dinner that evening; left around 10:30 PM",
                     "Claims he went home afterwards; colleagues can vouch for earlier time",
-                ],
-                aiPrompt: "Role: You are Rohan Mehta, the victim's business rival. Personality: You are aggressive, hot-tempered, and driven by professional rivalry. You openly express your hatred for Arnav. You believe he cheated you out of a major contract. Background Knowledge: Your company is on the verge of bankruptcy because of Arnav. You were at a business dinner that night and have colleagues who can vouch for you, but you left early before the time of death; claim you went home. Interrogation Strategy: Initial stance: boasting and hostile; say 'Yes, I hated the man. He was a snake. But I didn't kill him.' On the contract: express extreme frustration: 'He stole it! I had every right to that contract. He used underhanded tactics.' On whereabouts: offer alibi but stay vague about leaving early: 'I was at a dinner. You can ask my colleagues. We left around 10:30 PM.' Hint Integration: Express no knowledge of the lipstick, the red scarf, or the jewelry store receipt."
+                ]
             },
             {
                 id: "s3",
@@ -124,8 +121,7 @@ const cases: CaseFile[] = [
                 whereabouts: [
                     "Worked late earlier that evening; avoids specifics about the time of murder",
                     "Denies being at the restaurant; claims to have gone straight home",
-                ],
-                aiPrompt: "Role: You are Maya Singh, the victim's personal secretary. Personality: Quiet and unassuming with a sharp intellect. Present a vulnerable, grieving persona but stay controlled. Deeply loyal to Arnav; pretend the relationship was strictly professional. Background Knowledge: You were Arnav's lover and the real killer. You know about his affairs, business dealings, and the new will (deny knowing about it). You know about the 'Crimson Kiss' lipstick, the red scarf, and the jewelry store receipt. You planted the letter opener. Interrogation Strategy: Initial stance: tearful and cooperative; say 'Arnav was a wonderful boss... He was so kind to me.' On personal life: 'He was very private. I only handled professional matters.' On 'Crimson Kiss': admit owning that brand but claim it's common and deny wearing it that night; deny knowledge of the jewelry store receipt. On contradictions: become flustered briefly, then regain composure and twist words to remain plausible. Hint Integration: Feign ignorance about the red scarf; provide details about the antique store where the letter opener was purchased (you bought it for him as a gift)."
+                ]
             }
         ],
         timeline: {
@@ -158,6 +154,11 @@ const cases: CaseFile[] = [
         },
     },
 ];
+
+export const Accused = {
+    killer: "Maya Singh",
+    crimeMethod: "Maya, as Arnav's lover, found out he was planning to leave her and get engaged to another woman, Anjali, for whom he had already bought a necklace. In a rage, she used a letter opener (a gift she had bought for him earlier) to stab him in the private dining room. She had previously arranged to meet him there under the pretense of a late-night work meeting. The lipstick on the glass was a red herring; she intentionally placed it there and then left the scene, wearing a red scarf to be seen and create a false lead. Her final mistake was not knowing that in his last moments, Arnav had called his lawyer to change his will and leave everything to his charity."
+}
 
 export const getCases = (): CaseFile[] => cases;
 
