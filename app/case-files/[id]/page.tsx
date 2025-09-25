@@ -107,8 +107,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         });
     };
 
-    // Hints unlocking state (simple: start with 1, increment on unlock)
-    const [unlockedHintsCount, setUnlockedHintsCount] = useState<number>(1);
+    // Persistent per-hint unlock schedule keyed by case id
+    const [hintSchedule, setHintSchedule] = useState<number[] | null>(null);
+    const [nowTs, setNowTs] = useState<number>(Date.now());
+    // Session-only manual unlocks (not persisted)
+    const [sessionExtraUnlocked, setSessionExtraUnlocked] = useState<number>(0);
 
     const TabNames = ["Case File", "Hints", "Suspects", "Timeline", "Your Verdict"];
 
@@ -117,14 +120,74 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         return caseFile.suspects.find((s) => s.id === selectedSuspectId);
     }, [caseFile, selectedSuspectId]);
 
+    // Tick clock for countdowns
+    useEffect(() => {
+        const t = setInterval(() => setNowTs(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, []);
+
+    // Initialize or hydrate per-case hint schedule from localStorage (derive from a single base timestamp)
+    useEffect(() => {
+        if (!caseFile) return;
+        try {
+            const arrayKey = `near_case_hint_schedule_${caseFile.id}`; // legacy array storage
+            const baseKey = `near_case_hint_base_${caseFile.id}`;      // new base timestamp
+            const versionKey = `near_case_hint_version_${caseFile.id}`; // schema/version guard
+            const VERSION = '2';
+            const rawBase = typeof window !== 'undefined' ? localStorage.getItem(baseKey) : null;
+            const rawArray = typeof window !== 'undefined' ? localStorage.getItem(arrayKey) : null;
+            const rawVersion = typeof window !== 'undefined' ? localStorage.getItem(versionKey) : null;
+            const len = caseFile.hints.length;
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const needsReset = rawVersion !== VERSION;
+            let base = NaN;
+            if (!needsReset) {
+                base = Number.isFinite(Number(rawBase)) ? Number(rawBase) : NaN;
+                if (!Number.isFinite(base) && rawArray) {
+                    try {
+                        const parsed = JSON.parse(rawArray) as unknown;
+                        if (Array.isArray(parsed) && typeof parsed[0] === 'number' && Number.isFinite(parsed[0])) {
+                            base = parsed[0] as number;
+                        }
+                    } catch { }
+                }
+            }
+            if (needsReset || !Number.isFinite(base)) {
+                base = Date.now();
+            }
+            try { localStorage.setItem(baseKey, String(base)); localStorage.setItem(versionKey, VERSION); } catch { }
+            const schedule: number[] = new Array(len);
+            schedule[0] = base;
+            for (let i = 1; i < len; i++) schedule[i] = base + i * DAY_MS;
+            setHintSchedule(schedule);
+            // Overwrite legacy array with recomputed schedule to clear any prior manual overrides
+            try { localStorage.setItem(arrayKey, JSON.stringify(schedule)); } catch { }
+        } catch { }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [caseFile?.id, caseFile?.hints.length]);
+
+    // Reset session-only unlocks when switching cases
+    useEffect(() => {
+        setSessionExtraUnlocked(0);
+    }, [caseFile?.id]);
+
     const visibleHintsCount = useMemo(() => {
         if (!caseFile) return 0;
-        return Math.min(unlockedHintsCount, caseFile.hints.length);
-    }, [caseFile, unlockedHintsCount]);
+        if (!hintSchedule) return 1;
+        const len = caseFile.hints.length;
+        let baseCount = 0;
+        for (let i = 0; i < len; i++) {
+            const unlockAt = hintSchedule[i] ?? Number.POSITIVE_INFINITY;
+            if (i === 0 || nowTs >= unlockAt) baseCount++; else break;
+        }
+        return Math.min(baseCount + sessionExtraUnlocked, len);
+    }, [caseFile, hintSchedule, nowTs, sessionExtraUnlocked]);
 
     const unlockNextHint = () => {
         if (!caseFile) return;
-        setUnlockedHintsCount((prev) => Math.min(prev + 1, caseFile.hints.length));
+        const nextIdx = visibleHintsCount;
+        if (nextIdx >= caseFile.hints.length) return;
+        setSessionExtraUnlocked((n) => n + 1);
     };
 
     const handlePrev = () => {
@@ -364,6 +427,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         return amount.toString();
     }
 
+    // Format remaining duration until unlock
+    function formatRemaining(ms: number): string {
+        if (ms <= 0 || !isFinite(ms)) return "now";
+        const totalSeconds = Math.floor(ms / 1000);
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const parts: string[] = [];
+        if (days) parts.push(`${days}d`);
+        if (hours || days) parts.push(`${hours}h`);
+        if (minutes || hours || days) parts.push(`${minutes}m`);
+        parts.push(`${seconds}s`);
+        return parts.join(" ");
+    }
+
     return (
         <main className="w-full h-[calc(100vh-4rem)] text-white relative overflow-hidden bg-gradient-to-b from-[#0b0c10] via-[#0f1218] to-[#0b0c10]">
             <div className="flex h-full">
@@ -401,6 +480,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                             <ul className="mt-3 space-y-3">
                                 {caseFile.hints.map((hint, idx) => {
                                     const isUnlocked = idx < visibleHintsCount;
+                                    const isNextLocked = !isUnlocked && idx === visibleHintsCount;
                                     return (
                                         <li key={idx} className="flex items-center gap-3 font-funnel-display">
                                             <Image src="/assets/background/hintIcon.png" alt="hint" width={22} height={20} />
@@ -409,12 +489,19 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                             ) : (
                                                 <div className="flex items-center gap-3 text-white/50">
                                                     <span className="select-none">Locked hint</span>
-                                                    <button
-                                                        onClick={unlockNextHint}
-                                                        className="border border-white/30 text-white/80 px-3 py-1 hover:bg-white/10"
-                                                    >
-                                                        Unlock now
-                                                    </button>
+                                                    {hintSchedule && (
+                                                        <span className="text-white/40 text-xs">
+                                                            Unlocks in {formatRemaining(((hintSchedule[idx] ?? nowTs) - nowTs))}
+                                                        </span>
+                                                    )}
+                                                    {isNextLocked && (
+                                                        <button
+                                                            onClick={unlockNextHint}
+                                                            className="border border-white/30 text-white/80 px-3 py-1 hover:bg-white/10"
+                                                        >
+                                                            Unlock now
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </li>
