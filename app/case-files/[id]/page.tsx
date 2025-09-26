@@ -381,12 +381,63 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 {/* Right content area */}
                 <section className="flex-1 h-full overflow-auto">
                     {activeTab === 1 && (
-                        <div className="p-10">
-                            <h1 className="text-5xl font-funnel-display mb-2">{caseFile.title}</h1>
-                            <p className="mt-1 text-white/80 font-funnel-display mb-8">{caseFile.excerpt}</p>
-                            <div className="mt-6">
-                                <div className="text-[11px] uppercase tracking-widest text-zinc-400 mb-4">Case File</div>
-                                <p className="mt-2 leading-7 whitespace-pre-wrap break-words text-white/90 font-funnel-display max-w-3xl">{caseFile.story}</p>
+                        <div className="relative">
+                            <div className="relative overflow-hidden border-b border-white/10 bg-black/30">
+                                <div className="absolute inset-0 bg-[url('/assets/background/caseBg.svg')] bg-cover bg-center opacity-10" aria-hidden="true" />
+                                <div className="relative p-8 md:p-10">
+                                    <div className="flex items-center gap-3 text-[11px] uppercase tracking-widest text-white/60">
+                                        <span>Dossier</span>
+                                        <span className="h-1 w-1 rounded-full bg-white/30" />
+                                        <span className="truncate">ID {String(caseFile.id).slice(0, 8)}…</span>
+                                    </div>
+                                    <h1 className="mt-2 text-4xl md:text-5xl font-funnel-display">{caseFile.title}</h1>
+                                    {caseFile.excerpt && (
+                                        <p className="mt-2 text-white/80 font-funnel-display max-w-3xl">{caseFile.excerpt}</p>
+                                    )}
+                                    <div className="mt-6 flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-white/80">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
+                                            {caseFile.suspects.length} suspects
+                                        </span>
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-white/80">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80" />
+                                            {caseFile.hints.length} hints
+                                        </span>
+                                        {caseFile.timeline && (
+                                            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-white/80">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-sky-400/80" />
+                                                {caseFile.timeline.events.length} timeline events
+                                            </span>
+                                        )}
+                                    </div>
+                                    {caseFile.suspects.length > 0 && (
+                                        <div className="mt-5 flex flex-wrap items-center gap-3">
+                                            <div className="text-[11px] uppercase tracking-widest text-white/60">Key suspects</div>
+                                            <div className="flex -space-x-2">
+                                                {caseFile.suspects.slice(0, 5).map((s) => (
+                                                    <Image key={s.id} src={s.image || "/suspect.png"} alt={s.name} width={36} height={36} className="h-9 w-9 rounded-full object-cover ring-1 ring-white/20" />
+                                                ))}
+                                            </div>
+                                            {caseFile.suspects.length > 5 && (
+                                                <span className="text-xs text-white/60 font-funnel-display">+{caseFile.suspects.length - 5} more</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="p-8 md:p-10">
+                                <div className="text-[11px] uppercase tracking-widest text-zinc-400">Case Narrative</div>
+                                <div className="mt-3 rounded-xl border border-white/10 bg-black/30 shadow-sm">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-white/5 pointer-events-none" aria-hidden="true" />
+                                        <div className="relative p-6 md:p-8">
+                                            <p className="font-funnel-display text-white/90 leading-8 whitespace-pre-wrap break-words max-w-5xl first-letter:float-left first-letter:mr-2 first-letter:text-6xl first-letter:leading-none first-letter:font-semibold first-letter:text-white/80">
+                                                {caseFile.story}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
