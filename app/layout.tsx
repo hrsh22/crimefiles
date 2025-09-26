@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Funnel_Display, Funnel_Sans } from "next/font/google";
 import "./globals.css";
 import { ContextProvider } from ".";
-import ReactQueryProvider from "./ReactQueryProvider";
 import Header from "@/components/header";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -38,14 +37,12 @@ export default function RootLayout({
       <body
         className={`${geist.variable} ${geistMono.variable} ${funnelDisplay.variable} ${funnelSans.variable} font-sans`}
       >
-        <ReactQueryProvider>
-          <ContextProvider>
-            <Header />
-            <div className="pt-16 min-h-screen">
-              {children}
-            </div>
-          </ContextProvider>
-        </ReactQueryProvider>
+        <ContextProvider>
+          <Header />
+          <div className="pt-16 min-h-screen">
+            {children}
+          </div>
+        </ContextProvider>
       </body>
     </html>
   );

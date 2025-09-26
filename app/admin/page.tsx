@@ -10,36 +10,15 @@ export default function AdminPage() {
         if (!caseId) return;
         try {
             setLoading(true);
-            // First, poll accuse to ensure latest confirmations (idempotent)
-            await fetch("/api/accuse", { method: "GET" });
-            const res = await fetch(`/api/distribute?caseId=${encodeURIComponent(caseId)}`);
-            const json = await res.json();
-            if (caseId === "DLI-MUR-2025-0923" && (json?.error || !Array.isArray(json?.winners) || json.winners.length === 0)) {
-                const toNear = process.env.NEXT_PUBLIC_contractId || "ac-proxy.hrsh.testnet";
-                const demo = {
-                    caseId,
-                    guiltySuspectId: "s3",
-                    winners: [
-                        { nearAccount: "hrsh.testnet", amount: "0.1" }
-                    ],
-                    deposits: [
-                        {
-                            caseId,
-                            suspectId: "s3",
-                            fromNearAccountId: "hrsh.testnet",
-                            toNearAccountId: toNear,
-                            amount: "0.1",
-                            agentPath: "accuse",
-                            createdAtMs: Date.now() - 60000,
-                            updatedAtMs: Date.now() - 30000,
-                            status: "confirmed"
-                        }
-                    ],
-                };
-                setResult(demo);
-            } else {
-                setResult(json);
-            }
+            // Frontend-only demo payload
+            const demo = {
+                caseId,
+                guiltySuspectId: "s3",
+                winners: [{ user: "demo", amount: "0.1" }],
+                note: "Demo-only: no blockchain or NEAR involved",
+            };
+            await new Promise((r) => setTimeout(r, 400));
+            setResult(demo);
         } catch (e) {
             setResult({ error: (e as Error).message });
         } finally {

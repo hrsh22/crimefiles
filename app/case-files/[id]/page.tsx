@@ -3,59 +3,18 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { getCaseById } from "../cases";
-import type { CaseFile } from "../cases";
 import Wallet from "@/app/wallet";
 import { useAccount } from 'wagmi';
 import { Volume2, Loader2, Square } from "lucide-react";
 
 export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = React.use(params as Promise<{ id: string }>);
-    const [cidCase, setCidCase] = useState<CaseFile | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const caseFile = useMemo(() => {
-        return getCaseById(id) ?? cidCase;
-    }, [id, cidCase]);
+    const caseFile = useMemo(() => getCaseById(id), [id]);
+    const { isConnected } = useAccount();
 
-    useEffect(() => {
-        (async () => {
-            setIsLoading(true);
-            try {
-                const url = `https://gateway.lighthouse.storage/ipfs/${id}`;
-                const res = await fetch(url);
-                const json = await res.json();
-                if (json && typeof json === "object") {
-                    const suspectsInput = (Array.isArray((json as { suspects?: unknown }).suspects) ? (json as { suspects: unknown[] }).suspects : []) as Partial<CaseFile["suspects"][number]>[];
-                    const normalizedSuspects = suspectsInput.map((s, i): CaseFile["suspects"][number] => ({
-                        id: s?.id ?? `s${i + 1}`,
-                        name: s?.name ?? `Suspect ${i + 1}`,
-                        description: s?.description ?? undefined,
-                        age: s?.age ?? 22 + i,
-                        occupation: s?.occupation ?? "Unknown",
-                        image: s?.image ?? `/assets/suspects/${((i % 3) + 1)}.png`,
-                        gender: s?.gender ?? "M",
-                        traits: s?.traits ?? [],
-                        mannerisms: s?.mannerisms ?? [],
-                        aiPrompt: (s as { aiPrompt?: string })?.aiPrompt,
-                        whereabouts: Array.isArray((s as { whereabouts?: unknown }).whereabouts) ? ((s as { whereabouts: string[] }).whereabouts) : undefined,
-                    }));
-                    const normalized: CaseFile = {
-                        id: (json as Partial<CaseFile>)?.id ?? id,
-                        title: (json as Partial<CaseFile>)?.title ?? "Generated Case",
-                        excerpt: (json as Partial<CaseFile>)?.excerpt ?? "",
-                        story: (json as Partial<CaseFile>)?.story ?? "",
-                        hints: Array.isArray((json as Partial<CaseFile>)?.hints) ? ((json as Partial<CaseFile>)?.hints as string[]) : [],
-                        suspects: normalizedSuspects,
-                        timeline: (json as Partial<CaseFile>)?.timeline as CaseFile["timeline"] | undefined,
-                    };
-                    setCidCase(normalized);
-                }
-            } catch { }
-            finally { setIsLoading(false); }
-        })();
-    }, [id]);
+    // Frontend-only: rely on local cases; skip remote fetch
 
     const [selectedSuspectId, setSelectedSuspectId] = useState<string>("");
-    const { isConnected } = useAccount();
     const [activeTab, setActiveTab] = useState<number>(1);
     const [currentSuspectIndex, setCurrentSuspectIndex] = useState<number>(0);
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -64,12 +23,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [chatInput, setChatInput] = useState<string>("");
     const [messages, setMessages] = useState<Array<{ sender: "you" | "suspect"; text: string }>>([]);
     const [isSending, setIsSending] = useState<boolean>(false);
-    const [isHydrating, setIsHydrating] = useState<boolean>(false);
 
     // TTS states
     const [generatingIdx, setGeneratingIdx] = useState<number | null>(null);
     const [playingIdx, setPlayingIdx] = useState<number | null>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
     // Timeline interactivity state
     const [timelineZoom, setTimelineZoom] = useState<number>(140); // px per tick
@@ -77,24 +35,23 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 
     const allTags = useMemo(() => {
-        if (!cidCase?.timeline && !getCaseById(id)?.timeline) return new Set<string>();
-        const t = (getCaseById(id)?.timeline ?? cidCase?.timeline)!;
+        const t = caseFile?.timeline;
+        if (!t) return new Set<string>();
         const tags = new Set<string>();
         for (const ev of t.events) {
             for (const tg of (ev.tags ?? [])) tags.add(tg);
         }
         return tags;
-    }, [id, cidCase]);
+    }, [caseFile]);
 
     useEffect(() => {
-        const t = (getCaseById(id)?.timeline ?? cidCase?.timeline);
+        const t = caseFile?.timeline;
         if (!t) return;
-        // hide solution lane/tags by default (no spoilers)
         setVisibleLaneIds(t.lanes.filter(l => l.kind !== 'solution').map(l => l.id));
         const defaults = new Set<string>(Array.from(allTags));
         defaults.delete('Solution');
         setActiveTags(defaults);
-    }, [id, cidCase, allTags]);
+    }, [caseFile, allTags]);
 
     const toggleLane = (laneId: string) => {
         setVisibleLaneIds(prev => prev.includes(laneId) ? prev.filter(id => id !== laneId) : [...prev, laneId]);
@@ -161,9 +118,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     };
 
     const stopTts = () => {
-        try { audioRef.current?.pause?.(); } catch { }
-        try { if (audioRef.current) audioRef.current.currentTime = 0; } catch { }
-        audioRef.current = null;
+        try { if (typeof window !== 'undefined') window.speechSynthesis.cancel(); } catch { }
+        utteranceRef.current = null;
         setPlayingIdx(null);
         setGeneratingIdx(null);
     };
@@ -174,58 +130,45 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             // stop any currently playing audio before starting a new one
             if (playingIdx !== null && playingIdx !== idx) { stopTts(); }
             setGeneratingIdx(idx);
-            const gender = selectedSuspect?.gender;
-            const res = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, gender }),
-            });
-            if (!res.ok) throw new Error("TTS failed");
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.onended = () => {
-                URL.revokeObjectURL(url);
+            const utter = new SpeechSynthesisUtterance(text);
+            try {
+                const voices = window.speechSynthesis.getVoices();
+                const isFemale = (selectedSuspect?.gender || '').toUpperCase().startsWith('F');
+                const preferred = voices.find(v => isFemale ? /female|nova|ariana|samantha/i.test(v.name) : /male|daniel|alex|fred|google.*english.*male/i.test(v.name));
+                if (preferred) utter.voice = preferred;
+                utter.pitch = isFemale ? 1.1 : 0.95;
+                utter.rate = 1.0;
+            } catch { }
+            utter.onend = () => {
                 setPlayingIdx((cur) => (cur === idx ? null : cur));
-                audioRef.current = null;
+                utteranceRef.current = null;
             };
+            utter.onerror = () => {
+                setPlayingIdx(null);
+                setGeneratingIdx(null);
+                utteranceRef.current = null;
+            };
+            utteranceRef.current = utter;
             setGeneratingIdx(null);
             setPlayingIdx(idx);
-            await audio.play();
+            window.speechSynthesis.speak(utter);
         } catch (e) {
             setPlayingIdx(null);
             setGeneratingIdx(null);
-            audioRef.current = null;
-            console.error("Failed to play audio:", e);
+            utteranceRef.current = null;
+            console.error("Failed to speak:", e);
         }
     };
 
-    const hydrateMessagesForSuspect = (suspectId: string) => {
+    const hydrateMessagesForSuspect = () => {
         setChatInput("");
-        setIsHydrating(true);
-        try {
-            const msgsKey = `near_thread_msgs_${suspectId}`;
-            const raw = typeof window !== 'undefined' ? localStorage.getItem(msgsKey) : null;
-            if (raw) {
-                try {
-                    const parsed = JSON.parse(raw) as Array<{ sender: "you" | "suspect"; text: string }>;
-                    if (Array.isArray(parsed)) {
-                        setMessages(parsed);
-                        setIsHydrating(false);
-                        return;
-                    }
-                } catch { }
-            }
-        } catch { }
         setMessages([]);
-        setIsHydrating(false);
     };
 
     const openInterrogation = async (suspectId: string) => {
         setSelectedSuspectId(suspectId);
         setIsInterrogationOpen(true);
-        hydrateMessagesForSuspect(suspectId);
+        hydrateMessagesForSuspect();
     };
 
     const switchInterrogationTo = (direction: "prev" | "next") => {
@@ -236,7 +179,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         const nextIdx = direction === "prev" ? (idx <= 0 ? len - 1 : idx - 1) : (idx >= len - 1 ? 0 : idx + 1);
         const nextId = caseFile.suspects[nextIdx].id;
         setSelectedSuspectId(nextId);
-        hydrateMessagesForSuspect(nextId);
+        hydrateMessagesForSuspect();
     };
 
     const closeInterrogation = () => {
@@ -252,59 +195,21 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         const nextAfterUser = [...messages, userMsg];
         setMessages(nextAfterUser);
         setChatInput("");
-        try {
-            const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
-            localStorage.setItem(msgsKey, JSON.stringify(nextAfterUser));
-        } catch { }
-
-        const latestMessage = { role: "user" as const, content: trimmed };
 
         try {
             setIsSending(true);
-            const storageKey = `near_thread_${selectedSuspectId}`;
-            let existingThreadId: string | undefined = undefined;
-            try {
-                existingThreadId = localStorage.getItem(storageKey) || undefined;
-            } catch { }
-
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    suspectId: selectedSuspectId,
-                    messages: [latestMessage],
-                    threadId: existingThreadId,
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.error) {
-                console.error("Chat API error:", data.error);
-                setMessages((prev) => [...prev, { sender: "suspect", text: "I have nothing to say right now." }]);
-            } else if (data.response) {
-                try {
-                    if (data.threadId) {
-                        localStorage.setItem(storageKey, data.threadId as string);
-                    }
-                } catch { }
-                const assistantMsg = { sender: "suspect" as const, text: data.response as string };
-                const nextAfterAssistant = [...nextAfterUser, assistantMsg];
-                setMessages(nextAfterAssistant);
-                try {
-                    const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
-                    localStorage.setItem(msgsKey, JSON.stringify(nextAfterAssistant));
-                } catch { }
-            }
+            const name = selectedSuspect?.name || "Suspect";
+            const occupation = selectedSuspect?.occupation ? ` (${selectedSuspect.occupation})` : "";
+            const cautious = selectedSuspect?.traits?.includes("quiet and incisive") || selectedSuspect?.traits?.includes("emotionally controlled");
+            const reply = cautious
+                ? `${name}${occupation}: "${trimmed.length > 80 ? "That's a lot to take in." : "I don't have more to add right now."} But if you have something concrete, say it clearly."`
+                : `${name}${occupation}: "${trimmed.endsWith("?") ? "Maybe. Maybe not." : "Listen."} I won't be pushed around. Ask something real."`;
+            await new Promise((r) => setTimeout(r, 400));
+            const assistantMsg = { sender: "suspect" as const, text: reply };
+            const nextAfterAssistant = [...nextAfterUser, assistantMsg];
+            setMessages(nextAfterAssistant);
         } catch (error) {
-            console.error("Failed to get response:", error);
-            const fallback = { sender: "suspect" as const, text: "I need a moment to think..." };
-            const nextWithFallback = [...messages, { sender: "you" as const, text: trimmed }, fallback];
-            setMessages(nextWithFallback);
-            try {
-                const msgsKey = `near_thread_msgs_${selectedSuspectId}`;
-                localStorage.setItem(msgsKey, JSON.stringify(nextWithFallback));
-            } catch { }
+            console.error("Failed to create local response:", error);
         } finally {
             setIsSending(false);
         }
@@ -332,16 +237,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         );
     }
 
-    if (isLoading) {
-        return (
-            <div className="h-[calc(100vh-4rem)] grid place-items-center bg-gradient-to-b from-[#0b0c10] via-[#0f1218] to-[#0b0c10] text-zinc-100">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-10 w-10 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                    <div className="font-funnel-display text-white/80">Loading case…</div>
-                </div>
-            </div>
-        );
-    }
+    // Local-only: no loading state
 
     if (!caseFile) {
         return (
@@ -770,9 +666,6 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                     <button onClick={closeInterrogation} aria-label="Close interrogation" className="text-white/70 hover:text-white">✕</button>
                                 </div>
                                 <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 overscroll-contain" ref={chatScrollRef}>
-                                    {isHydrating && (
-                                        <div className="text-sm text-white/60">Loading previous messages…</div>
-                                    )}
                                     {messages.map((m, idx) => (
                                         <div key={idx} className={`flex ${m.sender === "you" ? "justify-end" : "justify-start"}`}>
                                             <div className={`${m.sender === "you" ? "bg-white text-black" : "bg-white/10 text-white"} px-3 py-2 rounded-md max-w-[80%]`}>
